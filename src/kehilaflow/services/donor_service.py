@@ -39,10 +39,10 @@ class DonorService:
         return self._donor_repository.find_by_id(donor_id)
 
     def update(self, donor: Donor) -> None:
-        existing_donor = self._donor_repository.find_by_email(donor.email)
+        existing_donor = self._donor_repository.find_by_id(donor.id)
 
         if existing_donor is None:
-            raise DonorNotFoundError(f"No donor found with email {donor.email}.")
+            raise DonorNotFoundError(f"No donor found with id {donor.id}.")
 
         self._donor_repository.update(donor)
 
@@ -57,11 +57,12 @@ class DonorService:
 
     def get_summary(self, donor_id: UUID) -> DonorSummary:
         donor = self._donor_repository.find_by_id(donor_id)
-        pledges = self._pledge_repository.get_by_donor_id(donor_id)
+
         if donor is None:
             raise DonorNotFoundError(f"No donor found with id {donor_id}.")
 
         donations = self._donation_repository.get_by_donor_id(donor_id)
+        pledges = self._pledge_repository.get_by_donor_id(donor_id)
 
         return DonorSummary(
             donor=donor,
