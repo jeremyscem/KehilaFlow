@@ -10,6 +10,4 @@ class Donor:
 
     id: UUID = field(default_factory=uuid4)
     phone: str | None = None
-    pledged_amount: int = 0
-    paid_amount: int = 0
     active: bool = True
