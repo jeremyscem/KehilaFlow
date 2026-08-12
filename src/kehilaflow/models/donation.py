@@ -8,4 +8,4 @@ class Donation:
     donor_id: UUID
     amount: int
     donation_date: date
-    campaign: str | None = None
+    campaign_id: UUID | None = None

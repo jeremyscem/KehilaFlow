@@ -1,4 +1,5 @@
 from datetime import date
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -6,4 +7,4 @@ from pydantic import BaseModel
 class PledgeCreate(BaseModel):
     amount: int
     pledge_date: date
-    campaign: str | None = None
+    campaign_id: UUID | None = None

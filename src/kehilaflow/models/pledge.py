@@ -10,4 +10,4 @@ class Pledge:
     pledge_date: date
 
     id: UUID = field(default_factory=uuid4)
-    campaign: str | None = None
+    campaign_id: UUID | None = None
