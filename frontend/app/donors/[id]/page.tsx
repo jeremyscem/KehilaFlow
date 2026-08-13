@@ -2,7 +2,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { api } from "@/lib/api";
+import { AddDonationButton, AddPledgeButton } from "./DonorActions";
 import Link from "next/link";
+import type { Campaign } from "@/lib/types";
 
 function fmt(amount: number) {
   return new Intl.NumberFormat("fr-FR", {
@@ -35,13 +37,16 @@ export default async function DonorProfilePage({
     );
   }
 
+  const campaigns: Campaign[] = await api.campaigns.list().catch(() => []);
   const { donor, total_pledged, total_paid, remaining, pledges, donations } = summary;
 
   return (
     <AppShell>
       <div className="space-y-8 max-w-5xl">
         {/* Breadcrumb */}
-        <Link href="/donors" className="inline-flex items-center gap-1.5 text-sm transition-colors"
+        <Link
+          href="/donors"
+          className="inline-flex items-center gap-1.5 text-sm transition-colors"
           style={{ color: "var(--text-muted)" }}
           onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
@@ -83,20 +88,34 @@ export default async function DonorProfilePage({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard label="Total Pledged" value={fmt(total_pledged)} accent="default" />
           <StatCard label="Total Paid" value={fmt(total_paid)} accent="green" />
-          <StatCard label="Remaining" value={fmt(remaining)} accent={remaining > 0 ? "amber" : "default"} />
+          <StatCard
+            label="Remaining"
+            value={fmt(remaining)}
+            accent={remaining > 0 ? "amber" : "default"}
+          />
         </div>
 
         {/* Pledges & Donations */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Pledges */}
           <Card>
-            <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+            <div
+              className="flex items-center justify-between px-5 py-4"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
               <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Pledges <span className="ml-1 text-xs font-normal" style={{ color: "var(--text-muted)" }}>({pledges.length})</span>
+                Pledges{" "}
+                <span className="ml-1 text-xs font-normal" style={{ color: "var(--text-muted)" }}>
+                  ({pledges.length})
+                </span>
               </h2>
+              <AddPledgeButton donorId={id} campaigns={campaigns} />
             </div>
             <div className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
               {pledges.length === 0 ? (
-                <p className="px-5 py-8 text-sm text-center" style={{ color: "var(--text-muted)" }}>No pledges.</p>
+                <p className="px-5 py-8 text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                  No pledges yet.
+                </p>
               ) : (
                 pledges.map((p) => (
                   <div key={p.id} className="flex items-center justify-between px-5 py-3">
@@ -104,24 +123,38 @@ export default async function DonorProfilePage({
                       <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                         {fmt(p.amount)}
                       </p>
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>{p.pledge_date}</p>
+                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {p.pledge_date}
+                      </p>
                     </div>
-                    <span className="text-xs" style={{ color: "var(--accent)" }}>Pledge</span>
+                    <span className="text-xs" style={{ color: "var(--accent)" }}>
+                      Pledge
+                    </span>
                   </div>
                 ))
               )}
             </div>
           </Card>
 
+          {/* Donations */}
           <Card>
-            <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+            <div
+              className="flex items-center justify-between px-5 py-4"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
               <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                Donations <span className="ml-1 text-xs font-normal" style={{ color: "var(--text-muted)" }}>({donations.length})</span>
+                Donations{" "}
+                <span className="ml-1 text-xs font-normal" style={{ color: "var(--text-muted)" }}>
+                  ({donations.length})
+                </span>
               </h2>
+              <AddDonationButton donorId={id} campaigns={campaigns} />
             </div>
             <div className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
               {donations.length === 0 ? (
-                <p className="px-5 py-8 text-sm text-center" style={{ color: "var(--text-muted)" }}>No donations yet.</p>
+                <p className="px-5 py-8 text-sm text-center" style={{ color: "var(--text-muted)" }}>
+                  No donations yet.
+                </p>
               ) : (
                 donations.map((d) => (
                   <div key={d.id} className="flex items-center justify-between px-5 py-3">
@@ -129,9 +162,13 @@ export default async function DonorProfilePage({
                       <p className="text-sm font-medium" style={{ color: "var(--success)" }}>
                         {fmt(d.amount)}
                       </p>
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>{d.donation_date}</p>
+                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {d.donation_date}
+                      </p>
                     </div>
-                    <span className="text-xs" style={{ color: "var(--success)" }}>Paid</span>
+                    <span className="text-xs" style={{ color: "var(--success)" }}>
+                      Paid
+                    </span>
                   </div>
                 ))
               )}
@@ -145,7 +182,16 @@ export default async function DonorProfilePage({
 
 function ChevronLeftIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="15 18 9 12 15 6" />
     </svg>
   );

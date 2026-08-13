@@ -1,4 +1,14 @@
-import type { Campaign, CampaignCreate, Donor, DonorCreate, DonorSummary } from "./types";
+import type {
+  Campaign,
+  CampaignCreate,
+  Donation,
+  DonationCreate,
+  Donor,
+  DonorCreate,
+  DonorSummary,
+  Pledge,
+  PledgeCreate,
+} from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -25,6 +35,16 @@ export const api = {
         body: JSON.stringify(data),
       }),
     summary: (id: string) => request<DonorSummary>(`/donors/${id}/summary`),
+    createPledge: (donorId: string, data: PledgeCreate) =>
+      request<Pledge>(`/donors/${donorId}/pledges`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    createDonation: (donorId: string, data: DonationCreate) =>
+      request<Donation>(`/donors/${donorId}/donations`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 
   campaigns: {

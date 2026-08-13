@@ -47,6 +47,18 @@ export interface DonorCreate {
   phone?: string;
 }
 
+export interface PledgeCreate {
+  amount: number;
+  pledge_date: string;
+  campaign_id: string | null;
+}
+
+export interface DonationCreate {
+  amount: number;
+  donation_date: string;
+  campaign_id: string | null;
+}
+
 export interface CampaignCreate {
   name: string;
   description?: string;
