@@ -5,6 +5,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+from kehilaflow.ai.assistant import ask_claude
+from kehilaflow.api.schemas.ai import AIChatRequest, AIChatResponse
 from kehilaflow.api.schemas.campaign import CampaignCreate
 from kehilaflow.api.schemas.donation import DonationCreate
 from kehilaflow.api.schemas.donor import DonorCreate
@@ -186,3 +188,19 @@ def create_campaign(
     service.create(campaign)
 
     return campaign
+
+
+@app.post("/ai/chat")
+def ai_chat(
+    data: AIChatRequest,
+    session: SessionDep,
+) -> AIChatResponse:
+    answer = ask_claude(
+        message=data.message,
+        session=session,
+        allow_writes=False,
+    )
+
+    return AIChatResponse(
+        answer=answer,
+    )
