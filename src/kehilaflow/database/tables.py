@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from kehilaflow.database.orm import Base
@@ -16,9 +18,10 @@ class DonorTable(Base):
 
     last_name: Mapped[str] = mapped_column(String)
 
-    email: Mapped[str] = mapped_column(
+    email: Mapped[str | None] = mapped_column(
         String,
         unique=True,
+        nullable=True,
     )
 
     phone: Mapped[str | None] = mapped_column(
@@ -99,4 +102,30 @@ class CampaignTable(Base):
     active: Mapped[bool] = mapped_column(
         Boolean,
         default=True,
+    )
+
+
+class ImportBatchTable(Base):
+    __tablename__ = "import_batches"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    file_name: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+    )
+
+    file_hash: Mapped[str] = mapped_column(
+        String,
+        unique=True,
+        nullable=False,
+    )
+
+    imported_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
     )

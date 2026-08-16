@@ -64,3 +64,71 @@ export interface CampaignCreate {
   description?: string;
   target_amount?: number;
 }
+
+export interface AIChatRequest {
+  message: string;
+}
+
+export interface AIChatResponse {
+  answer: string;
+}
+
+export interface ExcelPreviewResponse {
+  file_name: string;
+  sheet_name: string;
+  columns: string[];
+  rows: Record<string, string | number | boolean | null>[];
+  total_rows: number;
+}
+
+export type DonorMatchStatus = "existing" | "new" | "ambiguous";
+
+export type DonorMatchSource = "database" | "excel";
+
+export interface DonorMatchCandidate {
+  donor_id: string | null;
+  first_name: string;
+  last_name: string;
+  source: DonorMatchSource;
+}
+
+export interface DonorImportMatch {
+  first_name: string;
+  last_name: string;
+  pledged_amount: number;
+  paid_amount: number;
+  remaining: number;
+  status: DonorMatchStatus;
+  donor_id: string | null;
+  candidates: DonorMatchCandidate[];
+}
+
+export interface ExcelMatchResponse {
+  total_donors: number;
+  existing_donors: number;
+  new_donors: number;
+  ambiguous_donors: number;
+  donors: DonorImportMatch[];
+}
+
+export type ResolutionAction = "link_database" | "link_excel" | "create" | "ignore";
+
+export interface DonorResolution {
+  source_first_name: string;
+  source_last_name: string;
+  action: ResolutionAction;
+  donor_id?: string;
+  target_first_name?: string;
+  target_last_name?: string;
+}
+
+export interface ExcelImportResponse {
+  file_name: string;
+  created_donors: number;
+  existing_donors: number;
+  created_campaigns: number;
+  created_pledges: number;
+  created_donations: number;
+  total_pledged: number;
+  total_paid: number;
+}

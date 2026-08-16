@@ -23,12 +23,13 @@ class DonorService:
         self._pledge_repository = pledge_repository
 
     def create(self, donor: Donor) -> None:
-        existing_donor = self._donor_repository.find_by_email(donor.email)
+        if donor.email:
+            existing_donor = self._donor_repository.find_by_email(donor.email)
 
-        if existing_donor is not None:
-            raise DonorAlreadyExistsError(
-                f"A donor with email {donor.email} already exists."
-            )
+            if existing_donor is not None:
+                raise DonorAlreadyExistsError(
+                    f"A donor with email {donor.email} already exists."
+                )
 
         self._donor_repository.add(donor)
 
@@ -62,6 +63,7 @@ class DonorService:
             raise DonorNotFoundError(f"No donor found with id {donor_id}.")
 
         donations = self._donation_repository.get_by_donor_id(donor_id)
+
         pledges = self._pledge_repository.get_by_donor_id(donor_id)
 
         return DonorSummary(

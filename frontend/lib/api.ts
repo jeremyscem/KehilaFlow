@@ -1,4 +1,6 @@
 import type {
+  AIChatRequest,
+  AIChatResponse,
   Campaign,
   CampaignCreate,
   Donation,
@@ -6,6 +8,10 @@ import type {
   Donor,
   DonorCreate,
   DonorSummary,
+  ExcelPreviewResponse,
+  ExcelMatchResponse,
+  ExcelImportResponse,
+  DonorResolution,
   Pledge,
   PledgeCreate,
 } from "./types";
@@ -16,6 +22,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(error.detail ?? "Request failed");
+  }
+
+  return res.json() as Promise<T>;
+}
+
+async function requestFormData<T>(path: string, init?: Omit<RequestInit, "headers">): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    // Do NOT set Content-Type header — browser will set it with the boundary for multipart/form-data
   });
 
   if (!res.ok) {
@@ -54,5 +74,41 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+  },
+
+  ai: {
+    chat: (message: string) =>
+      request<AIChatResponse>("/ai/chat", {
+        method: "POST",
+        body: JSON.stringify({ message } as AIChatRequest),
+      }),
+  },
+
+  imports: {
+    previewExcel: (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return requestFormData<ExcelPreviewResponse>("/imports/excel/preview", {
+        method: "POST",
+        body: formData,
+      });
+    },
+    matchExcel: (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return requestFormData<ExcelMatchResponse>("/imports/excel/match", {
+        method: "POST",
+        body: formData,
+      });
+    },
+    confirmExcel: (file: File, resolutions: DonorResolution[]) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("resolutions", JSON.stringify(resolutions));
+      return requestFormData<ExcelImportResponse>("/imports/excel/confirm", {
+        method: "POST",
+        body: formData,
+      });
+    },
   },
 };

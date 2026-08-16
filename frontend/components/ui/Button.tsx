@@ -7,6 +7,7 @@ type ButtonVariant = "primary" | "ghost" | "outline";
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: "sm" | "md";
+  loading?: boolean;
 }
 
 const base =
@@ -22,6 +23,8 @@ export function Button({
   size = "md",
   className = "",
   style,
+  loading = false,
+  disabled = false,
   ...props
 }: ButtonProps) {
   const variantStyle =
@@ -46,10 +49,11 @@ export function Button({
     <button
       className={`${base} ${sizes[size]} ${className}`}
       style={{ ...variantStyle, ...style }}
+      disabled={disabled || loading}
       onMouseEnter={(e) => {
-        if (variant === "primary") {
+        if (variant === "primary" && !disabled && !loading) {
           e.currentTarget.style.background = "var(--accent-hover)";
-        } else {
+        } else if (!disabled && !loading) {
           e.currentTarget.style.background = "var(--surface-raised)";
           e.currentTarget.style.color = "var(--text-primary)";
         }
