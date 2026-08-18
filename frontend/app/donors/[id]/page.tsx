@@ -3,11 +3,12 @@ import { Card } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { api } from "@/lib/api";
 import { AddDonationButton, AddPledgeButton } from "./DonorActions";
+import { DonorBreadcrumb } from "./Breadcrumb";
 import Link from "next/link";
 import type { Campaign } from "@/lib/types";
 
 function fmt(amount: number) {
-  return new Intl.NumberFormat("fr-FR", {
+  return new Intl.NumberFormat("he-IL", {
     style: "currency",
     currency: "ILS",
     maximumFractionDigits: 0,
@@ -44,15 +45,7 @@ export default async function DonorProfilePage({
     <AppShell>
       <div className="space-y-8 max-w-5xl">
         {/* Breadcrumb */}
-        <Link
-          href="/donors"
-          className="inline-flex items-center gap-1.5 text-sm transition-colors"
-          style={{ color: "var(--text-muted)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-        >
-          <ChevronLeftIcon /> Donors
-        </Link>
+        <DonorBreadcrumb />
 
         {/* Header */}
         <div className="flex items-center gap-4">
@@ -67,9 +60,13 @@ export default async function DonorProfilePage({
               {donor.first_name} {donor.last_name}
             </h1>
             <div className="flex items-center gap-3 mt-1">
-              <span className="text-sm" style={{ color: "var(--text-muted)" }}>{donor.email}</span>
+              {donor.email && (
+                <span className="text-sm" style={{ color: "var(--text-muted)" }}>{donor.email}</span>
+              )}
               {donor.phone && (
-                <span className="text-sm" style={{ color: "var(--text-muted)" }}>· {donor.phone}</span>
+                <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  {donor.email ? "· " : ""}{donor.phone}
+                </span>
               )}
               <span
                 className="text-xs px-2 py-0.5 rounded-full"
@@ -89,8 +86,9 @@ export default async function DonorProfilePage({
           <StatCard label="Total Pledged" value={fmt(total_pledged)} accent="default" />
           <StatCard label="Total Paid" value={fmt(total_paid)} accent="green" />
           <StatCard
-            label="Remaining"
-            value={fmt(remaining)}
+            label={remaining > 0 ? "Outstanding" : remaining === 0 ? "Balance" : "Overpaid"}
+            value={fmt(Math.abs(remaining))}
+            sub={remaining === 0 ? "Paid in full" : remaining < 0 ? "Over pledged amount" : "To be collected"}
             accent={remaining > 0 ? "amber" : "default"}
           />
         </div>
@@ -117,21 +115,25 @@ export default async function DonorProfilePage({
                   No pledges yet.
                 </p>
               ) : (
-                pledges.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between px-5 py-3">
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                        {fmt(p.amount)}
-                      </p>
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {p.pledge_date}
-                      </p>
+                pledges.map((p) => {
+                  const campaignName = p.campaign_id ? campaigns.find(c => c.id === p.campaign_id)?.name : null;
+                  return (
+                    <div key={p.id} className="flex items-center justify-between px-5 py-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                          {fmt(p.amount)}
+                        </p>
+                        <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                          <p>{p.pledge_date}</p>
+                          {campaignName && <p>{campaignName}</p>}
+                        </div>
+                      </div>
+                      <span className="text-xs flex-shrink-0 ml-2" style={{ color: "var(--accent)" }}>
+                        Pledge
+                      </span>
                     </div>
-                    <span className="text-xs" style={{ color: "var(--accent)" }}>
-                      Pledge
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </Card>
@@ -156,21 +158,25 @@ export default async function DonorProfilePage({
                   No donations yet.
                 </p>
               ) : (
-                donations.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between px-5 py-3">
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--success)" }}>
-                        {fmt(d.amount)}
-                      </p>
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {d.donation_date}
-                      </p>
+                donations.map((d) => {
+                  const campaignName = d.campaign_id ? campaigns.find(c => c.id === d.campaign_id)?.name : null;
+                  return (
+                    <div key={d.id} className="flex items-center justify-between px-5 py-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium" style={{ color: "var(--success)" }}>
+                          {fmt(d.amount)}
+                        </p>
+                        <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                          <p>{d.donation_date}</p>
+                          {campaignName && <p>{campaignName}</p>}
+                        </div>
+                      </div>
+                      <span className="text-xs flex-shrink-0 ml-2" style={{ color: "var(--success)" }}>
+                        Paid
+                      </span>
                     </div>
-                    <span className="text-xs" style={{ color: "var(--success)" }}>
-                      Paid
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </Card>
@@ -180,19 +186,3 @@ export default async function DonorProfilePage({
   );
 }
 
-function ChevronLeftIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}

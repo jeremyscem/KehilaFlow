@@ -2,10 +2,10 @@ import { AppShell } from "@/components/layout/AppShell";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { api } from "@/lib/api";
-import type { Donor, Campaign } from "@/lib/types";
+import type { Donor, Campaign, DashboardStats } from "@/lib/types";
 
 function fmt(amount: number) {
-  return new Intl.NumberFormat("fr-FR", {
+  return new Intl.NumberFormat("he-IL", {
     style: "currency",
     currency: "ILS",
     maximumFractionDigits: 0,
@@ -14,22 +14,27 @@ function fmt(amount: number) {
 
 async function getDashboardData() {
   try {
-    const [donors, campaigns] = await Promise.all([
+    const [stats, donors, campaigns] = await Promise.all([
+      api.dashboard.stats(),
       api.donors.list(),
       api.campaigns.list(),
     ]);
-    return { donors, campaigns };
+    return {
+      stats,
+      donors,
+      campaigns,
+    };
   } catch {
-    return { donors: [] as Donor[], campaigns: [] as Campaign[] };
+    return {
+      stats: null as DashboardStats | null,
+      donors: [] as Donor[],
+      campaigns: [] as Campaign[],
+    };
   }
 }
 
 export default async function DashboardPage() {
-  const { donors, campaigns } = await getDashboardData();
-
-  const activeDonors = donors.filter((d) => d.active);
-  const activeCampaigns = campaigns.filter((c) => c.active);
-  const totalTarget = campaigns.reduce((sum, c) => sum + c.target_amount, 0);
+  const { stats, donors, campaigns } = await getDashboardData();
 
   return (
     <AppShell>
@@ -47,32 +52,36 @@ export default async function DashboardPage() {
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <StatCard
-            label="Active Donors"
-            value={String(activeDonors.length)}
-            sub={`${donors.length} total`}
+            label="Total Donors"
+            value={String(stats?.total_donors ?? 0)}
+            sub={`${stats?.donors_with_balance ?? 0} with balance`}
             accent="amber"
             icon={<UsersIcon />}
           />
           <StatCard
             label="Active Campaigns"
-            value={String(activeCampaigns.length)}
-            sub={`${campaigns.length} total`}
+            value={String(stats?.active_campaigns ?? 0)}
             accent="green"
             icon={<CampaignIcon />}
           />
           <StatCard
-            label="Total Target"
-            value={fmt(totalTarget)}
-            sub="across all campaigns"
+            label="Total Pledged"
+            value={fmt(stats?.total_pledged ?? 0)}
             accent="default"
             icon={<TargetIcon />}
           />
           <StatCard
-            label="Collected"
-            value={fmt(0)}
-            sub="no payments recorded yet"
+            label="Total Paid"
+            value={fmt(stats?.total_paid ?? 0)}
             accent="default"
             icon={<WalletIcon />}
+          />
+          <StatCard
+            label="Outstanding"
+            value={fmt(stats?.total_outstanding ?? 0)}
+            sub="to be collected"
+            accent="amber"
+            icon={<OutstandingIcon />}
           />
         </div>
 
@@ -234,6 +243,17 @@ function WalletIcon() {
       <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
       <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
       <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+    </svg>
+  );
+}
+
+function OutstandingIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <polyline points="13 2 13 9 20 9" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
     </svg>
   );
 }

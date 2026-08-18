@@ -10,8 +10,11 @@ from sqlalchemy.orm import Session
 from kehilaflow.ai.assistant import ask_claude
 from kehilaflow.api.schemas.ai import AIChatRequest, AIChatResponse
 from kehilaflow.api.schemas.campaign import CampaignCreate
+from kehilaflow.api.schemas.dashboard import (
+    DashboardStatsResponse,
+)
 from kehilaflow.api.schemas.donation import DonationCreate
-from kehilaflow.api.schemas.donor import DonorCreate
+from kehilaflow.api.schemas.donor import DonorCreate, DonorSummaryResponse
 from kehilaflow.api.schemas.imports import (
     DonorResolution,
     ExcelAnalysisResponse,
@@ -35,6 +38,9 @@ from kehilaflow.repositories.donation_repository import DonationRepository
 from kehilaflow.repositories.donor_repository import DonorRepository
 from kehilaflow.repositories.pledge_repository import PledgeRepository
 from kehilaflow.services.campaign_service import CampaignService
+from kehilaflow.services.dashboard_service import (
+    get_dashboard_stats,
+)
 from kehilaflow.services.donation_service import DonationService
 from kehilaflow.services.donor_service import DonorService
 from kehilaflow.services.excel_ai_service import (
@@ -192,7 +198,7 @@ def create_pledge(
     return pledge
 
 
-@app.get("/donors/{donor_id}/summary")
+@app.get("/donors/{donor_id}/summary", response_model=DonorSummaryResponse)
 def get_donor_summary(
     donor_id: UUID,
     session: SessionDep,
@@ -249,19 +255,25 @@ def create_campaign(
 # ==========================================
 
 
-@app.post("/ai/chat")
+@app.post(
+    "/ai/chat",
+    response_model=AIChatResponse,
+)
 def ai_chat(
     data: AIChatRequest,
     session: SessionDep,
 ) -> AIChatResponse:
-    answer = ask_claude(
+    result = ask_claude(
         message=data.message,
+        history=data.history,
+        pending_action_token=(data.pending_action_token),
         session=session,
-        allow_writes=False,
+        allow_writes=True,
     )
 
     return AIChatResponse(
-        answer=answer,
+        answer=result.answer,
+        pending_action_token=(result.pending_action_token),
     )
 
 
@@ -546,3 +558,15 @@ async def confirm_excel_file(
             status_code=422,
             detail=str(error),
         ) from error
+
+
+@app.get(
+    "/dashboard/stats",
+    response_model=DashboardStatsResponse,
+)
+def dashboard_stats(
+    session: SessionDep,
+) -> DashboardStatsResponse:
+    stats = get_dashboard_stats(session)
+
+    return DashboardStatsResponse(**stats)

@@ -2,7 +2,7 @@ export interface Donor {
   id: string;
   first_name: string;
   last_name: string;
-  email: string;
+  email: string | null;
   phone: string | null;
   active: boolean;
 }
@@ -65,12 +65,20 @@ export interface CampaignCreate {
   target_amount?: number;
 }
 
+export interface AIChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface AIChatRequest {
   message: string;
+  history?: AIChatMessage[];
+  pending_action_token?: string | null;
 }
 
 export interface AIChatResponse {
   answer: string;
+  pending_action_token?: string | null;
 }
 
 export interface ExcelPreviewResponse {
@@ -131,4 +139,13 @@ export interface ExcelImportResponse {
   created_donations: number;
   total_pledged: number;
   total_paid: number;
+}
+
+export interface DashboardStats {
+  total_donors: number;
+  active_campaigns: number;
+  total_pledged: number;
+  total_paid: number;
+  total_outstanding: number;
+  donors_with_balance: number;
 }

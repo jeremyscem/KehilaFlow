@@ -1,8 +1,10 @@
 import type {
+  AIChatMessage,
   AIChatRequest,
   AIChatResponse,
   Campaign,
   CampaignCreate,
+  DashboardStats,
   Donation,
   DonationCreate,
   Donor,
@@ -77,11 +79,15 @@ export const api = {
   },
 
   ai: {
-    chat: (message: string) =>
+    chat: (message: string, history?: AIChatMessage[], pendingActionToken?: string | null) =>
       request<AIChatResponse>("/ai/chat", {
         method: "POST",
-        body: JSON.stringify({ message } as AIChatRequest),
+        body: JSON.stringify({ message, history, pending_action_token: pendingActionToken } as AIChatRequest),
       }),
+  },
+
+  dashboard: {
+    stats: () => request<DashboardStats>("/dashboard/stats"),
   },
 
   imports: {

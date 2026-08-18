@@ -25,7 +25,7 @@ export function DonorsClient({ initialDonors }: Props) {
       (d) =>
         d.first_name.toLowerCase().includes(q) ||
         d.last_name.toLowerCase().includes(q) ||
-        d.email.toLowerCase().includes(q)
+        (d.email ? d.email.toLowerCase().includes(q) : false)
     );
   }, [donors, search]);
 

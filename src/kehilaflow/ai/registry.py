@@ -16,7 +16,9 @@ class RegisteredTool:
 TOOL_REGISTRY: dict[str, RegisteredTool] = {}
 
 
-def python_type_to_json_schema(annotation: Any) -> dict:
+def python_type_to_json_schema(
+    annotation: Any,
+) -> dict:
     origin = get_origin(annotation)
     args = get_args(annotation)
 
@@ -66,7 +68,10 @@ def ai_tool(
         properties = {}
         required = []
 
-        for name, parameter in function_signature.parameters.items():
+        for (
+            name,
+            parameter,
+        ) in function_signature.parameters.items():
             if name == "session":
                 continue
 
@@ -100,19 +105,34 @@ def get_tool_schemas(
     allow_writes: bool = False,
 ) -> list[dict]:
     return [
-        tool.schema for tool in TOOL_REGISTRY.values() if allow_writes or not tool.write
+        tool.schema
+        for tool in TOOL_REGISTRY.values()
+        if (allow_writes or not tool.write)
     ]
+
+
+def get_registered_tool(
+    name: str,
+) -> RegisteredTool:
+    tool = TOOL_REGISTRY.get(name)
+
+    if tool is None:
+        raise ValueError(f"Unknown AI tool: {name}")
+
+    return tool
 
 
 def execute_tool(
     name: str,
     tool_input: dict,
     session: Session,
+    *,
+    allow_writes: bool = False,
 ) -> dict:
-    tool = TOOL_REGISTRY.get(name)
+    tool = get_registered_tool(name)
 
-    if tool is None:
-        raise ValueError(f"Unknown AI tool: {name}")
+    if tool.write and not allow_writes:
+        raise ValueError("Write tool execution requires explicit confirmation.")
 
     return tool.function(
         session=session,

@@ -1,4 +1,7 @@
+import re
+import unicodedata
 from datetime import date
+from difflib import SequenceMatcher
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -13,15 +16,163 @@ from kehilaflow.repositories.donation_repository import DonationRepository
 from kehilaflow.repositories.donor_repository import DonorRepository
 from kehilaflow.repositories.pledge_repository import PledgeRepository
 from kehilaflow.services.campaign_service import CampaignService
+from kehilaflow.services.dashboard_service import (
+    get_dashboard_stats as get_dashboard_stats_service,
+)
 from kehilaflow.services.donation_service import DonationService
 from kehilaflow.services.donor_service import DonorService
 
 
-def _build_donor_service(session: Session) -> DonorService:
+def _build_donor_service(
+    session: Session,
+) -> DonorService:
     return DonorService(
         donor_repository=DonorRepository(session),
         donation_repository=DonationRepository(session),
         pledge_repository=PledgeRepository(session),
+    )
+
+
+def _date_to_string(
+    value: date | str,
+) -> str:
+    if isinstance(value, date):
+        return value.isoformat()
+
+    return str(value)
+
+
+# ------------------------------------------------------------------
+# DONOR SEARCH HELPERS
+# ------------------------------------------------------------------
+
+
+def _normalize_search_text(
+    value: str | None,
+) -> str:
+    if not value:
+        return ""
+
+    value = value.strip().casefold()
+
+    value = "".join(
+        character
+        for character in unicodedata.normalize(
+            "NFD",
+            value,
+        )
+        if unicodedata.category(character) != "Mn"
+    )
+
+    value = re.sub(
+        r"[^a-z0-9@+]+",
+        " ",
+        value,
+    )
+
+    return " ".join(value.split())
+
+
+def _similarity(
+    left: str,
+    right: str,
+) -> float:
+    if not left or not right:
+        return 0
+
+    return SequenceMatcher(
+        None,
+        left,
+        right,
+    ).ratio()
+
+
+def _donor_match_score(
+    query: str,
+    donor: Donor,
+) -> float:
+    first_name = _normalize_search_text(donor.first_name)
+
+    last_name = _normalize_search_text(donor.last_name)
+
+    full_name = (f"{first_name} {last_name}").strip()
+
+    email = _normalize_search_text(donor.email)
+
+    phone = re.sub(
+        r"\D",
+        "",
+        donor.phone or "",
+    )
+
+    normalized_query = _normalize_search_text(query)
+
+    query_phone = re.sub(
+        r"\D",
+        "",
+        query,
+    )
+
+    searchable_values = [
+        first_name,
+        last_name,
+        full_name,
+        email,
+    ]
+
+    # Exact / substring matches always win.
+    for value in searchable_values:
+        if normalized_query and normalized_query in value:
+            return 1.0
+
+    if query_phone and len(query_phone) >= 4 and query_phone in phone:
+        return 1.0
+
+    # Fuzzy comparison against first name,
+    # last name and full name.
+    direct_score = max(
+        _similarity(
+            normalized_query,
+            first_name,
+        ),
+        _similarity(
+            normalized_query,
+            last_name,
+        ),
+        _similarity(
+            normalized_query,
+            full_name,
+        ),
+    )
+
+    # For multi-word searches, compare every
+    # word against first and last name.
+    query_tokens = normalized_query.split()
+
+    token_score = 0.0
+
+    if query_tokens:
+        token_scores = []
+
+        for token in query_tokens:
+            token_scores.append(
+                max(
+                    _similarity(
+                        token,
+                        first_name,
+                    ),
+                    _similarity(
+                        token,
+                        last_name,
+                    ),
+                )
+            )
+
+        token_score = sum(token_scores) / len(token_scores)
+
+    return max(
+        direct_score,
+        token_score,
     )
 
 
@@ -33,8 +184,13 @@ def _build_donor_service(session: Session) -> DonorService:
 @ai_tool(
     description=(
         "Search KehilaFlow donors by name, email or phone. "
+        "The search tolerates spelling mistakes and approximate names. "
+        "For example Jefrokin, Jefroykin or Jefroikin may match JEYFROKIN. "
+        "Results are ranked by similarity. "
         "Use this first when the admin mentions a donor by name "
-        "and you do not know their donor ID."
+        "and you do not know their donor ID. "
+        "If several donors have similar scores, do not guess which person "
+        "the admin means; present the candidates or ask for clarification."
     ),
 )
 def search_donors(
@@ -43,19 +199,33 @@ def search_donors(
 ) -> dict:
     donors = DonorRepository(session).get_all()
 
-    normalized_query = query.casefold()
+    scored_matches = []
 
-    matches = [
-        donor
-        for donor in donors
-        if normalized_query
-        in (
-            f"{donor.first_name} {donor.last_name} {donor.email} {donor.phone or ''}"
-        ).casefold()
-    ]
+    for donor in donors:
+        score = _donor_match_score(
+            query,
+            donor,
+        )
+
+        if score < 0.72:
+            continue
+
+        scored_matches.append(
+            (
+                score,
+                donor,
+            )
+        )
+
+    scored_matches.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    matches = scored_matches[:10]
 
     return {
-        "count": len(matches),
+        "count": len(scored_matches),
         "donors": [
             {
                 "id": str(donor.id),
@@ -64,8 +234,12 @@ def search_donors(
                 "email": donor.email,
                 "phone": donor.phone,
                 "active": donor.active,
+                "match_score": round(
+                    score,
+                    3,
+                ),
             }
-            for donor in matches[:10]
+            for score, donor in matches
         ],
     }
 
@@ -117,7 +291,179 @@ def get_donor_summary(
 
 
 @ai_tool(
-    description="List all KehilaFlow fundraising campaigns.",
+    description=(
+        "Get the complete pledge and payment history "
+        "of a specific donor. "
+        "Use this when the admin asks what a donor pledged, "
+        "what they paid, when they paid, their latest payments, "
+        "or which campaigns their transactions belong to."
+    ),
+)
+def get_donor_transactions(
+    donor_id: str,
+    session: Session,
+) -> dict:
+    try:
+        donor_uuid = UUID(donor_id)
+    except ValueError:
+        return {
+            "found": False,
+            "error": "Invalid donor ID.",
+        }
+
+    donor_repository = DonorRepository(session)
+
+    donor = donor_repository.find_by_id(donor_uuid)
+
+    if donor is None:
+        return {
+            "found": False,
+            "error": "Donor not found.",
+        }
+
+    pledge_repository = PledgeRepository(session)
+
+    donation_repository = DonationRepository(session)
+
+    campaign_repository = CampaignRepository(session)
+
+    campaigns = {campaign.id: campaign for campaign in campaign_repository.get_all()}
+
+    pledges = pledge_repository.get_by_donor_id(donor_uuid)
+
+    donations = donation_repository.get_by_donor_id(donor_uuid)
+
+    transactions = []
+
+    for pledge in pledges:
+        campaign = campaigns.get(pledge.campaign_id)
+
+        transactions.append(
+            {
+                "type": "pledge",
+                "amount": pledge.amount,
+                "date": _date_to_string(pledge.pledge_date),
+                "campaign_id": (
+                    str(pledge.campaign_id) if pledge.campaign_id else None
+                ),
+                "campaign_name": (campaign.name if campaign else None),
+            }
+        )
+
+    for donation in donations:
+        campaign = campaigns.get(donation.campaign_id)
+
+        transactions.append(
+            {
+                "type": "payment",
+                "amount": donation.amount,
+                "date": _date_to_string(donation.donation_date),
+                "campaign_id": (
+                    str(donation.campaign_id) if donation.campaign_id else None
+                ),
+                "campaign_name": (campaign.name if campaign else None),
+            }
+        )
+
+    transactions.sort(
+        key=lambda transaction: transaction["date"],
+        reverse=True,
+    )
+
+    return {
+        "found": True,
+        "donor": {
+            "id": str(donor.id),
+            "first_name": donor.first_name,
+            "last_name": donor.last_name,
+        },
+        "count": len(transactions),
+        "transactions": transactions,
+    }
+
+
+@ai_tool(
+    description=(
+        "Get how much a specific donor pledged, paid and still owes "
+        "for a specific fundraising campaign. "
+        "Use this for questions such as "
+        "'How much did Ilan pay for Kippour?' "
+        "or 'How much does Jonathan still owe for Kippour?'. "
+        "If the campaign ID is unknown, use list_campaigns first."
+    ),
+)
+def get_donor_campaign_summary(
+    donor_id: str,
+    campaign_id: str,
+    session: Session,
+) -> dict:
+    try:
+        donor_uuid = UUID(donor_id)
+
+        campaign_uuid = UUID(campaign_id)
+    except ValueError:
+        return {
+            "found": False,
+            "error": ("Invalid donor or campaign ID."),
+        }
+
+    donor = DonorRepository(session).find_by_id(donor_uuid)
+
+    if donor is None:
+        return {
+            "found": False,
+            "error": "Donor not found.",
+        }
+
+    campaign = CampaignRepository(session).find_by_id(campaign_uuid)
+
+    if campaign is None:
+        return {
+            "found": False,
+            "error": "Campaign not found.",
+        }
+
+    pledges = PledgeRepository(session).get_by_donor_id(donor_uuid)
+
+    donations = DonationRepository(session).get_by_donor_id(donor_uuid)
+
+    campaign_pledges = [
+        pledge for pledge in pledges if pledge.campaign_id == campaign_uuid
+    ]
+
+    campaign_donations = [
+        donation for donation in donations if donation.campaign_id == campaign_uuid
+    ]
+
+    total_pledged = sum(pledge.amount for pledge in campaign_pledges)
+
+    total_paid = sum(donation.amount for donation in campaign_donations)
+
+    return {
+        "found": True,
+        "donor": {
+            "id": str(donor.id),
+            "first_name": donor.first_name,
+            "last_name": donor.last_name,
+        },
+        "campaign": {
+            "id": str(campaign.id),
+            "name": campaign.name,
+        },
+        "total_pledged": total_pledged,
+        "total_paid": total_paid,
+        "remaining": (total_pledged - total_paid),
+        "pledges_count": len(campaign_pledges),
+        "payments_count": len(campaign_donations),
+    }
+
+
+@ai_tool(
+    description=(
+        "List all KehilaFlow fundraising campaigns. "
+        "Use this to find a campaign ID when the admin "
+        "mentions a campaign by name."
+    ),
 )
 def list_campaigns(
     session: Session,
@@ -142,7 +488,9 @@ def list_campaigns(
 @ai_tool(
     description=(
         "Get financial statistics for a specific fundraising campaign "
-        "using its campaign ID."
+        "using its campaign ID. "
+        "Returns total pledged, total paid, remaining amount "
+        "and campaign progress."
     ),
 )
 def get_campaign_summary(
@@ -158,8 +506,11 @@ def get_campaign_summary(
         }
 
     campaign_repository = CampaignRepository(session)
+
     donor_repository = DonorRepository(session)
+
     donation_repository = DonationRepository(session)
+
     pledge_repository = PledgeRepository(session)
 
     campaign = campaign_repository.find_by_id(campaign_uuid)
@@ -175,6 +526,7 @@ def get_campaign_summary(
 
     for donor in donor_repository.get_all():
         pledges = pledge_repository.get_by_donor_id(donor.id)
+
         donations = donation_repository.get_by_donor_id(donor.id)
 
         total_pledged += sum(
@@ -216,56 +568,47 @@ def get_campaign_summary(
 
 @ai_tool(
     description=(
-        "Get overall KehilaFlow statistics including pledged, paid, "
-        "remaining, active donors and active campaigns."
+        "Get overall KehilaFlow dashboard statistics including "
+        "total donors, active campaigns, total pledged, total paid, "
+        "total outstanding and number of donors who still owe money."
     ),
 )
 def get_dashboard_stats(
     session: Session,
 ) -> dict:
-    donor_repository = DonorRepository(session)
-    donation_repository = DonationRepository(session)
-    pledge_repository = PledgeRepository(session)
-    campaign_repository = CampaignRepository(session)
-
-    donors = donor_repository.get_all()
-    campaigns = campaign_repository.get_all()
-
-    total_pledged = 0
-    total_paid = 0
-
-    for donor in donors:
-        total_pledged += sum(
-            pledge.amount for pledge in pledge_repository.get_by_donor_id(donor.id)
-        )
-
-        total_paid += sum(
-            donation.amount
-            for donation in donation_repository.get_by_donor_id(donor.id)
-        )
-
-    return {
-        "total_pledged": total_pledged,
-        "total_paid": total_paid,
-        "remaining": total_pledged - total_paid,
-        "active_donors": sum(1 for donor in donors if donor.active),
-        "active_campaigns": sum(1 for campaign in campaigns if campaign.active),
-    }
+    return get_dashboard_stats_service(session)
 
 
 @ai_tool(
     description=(
-        "List donors who still have money to pay, ordered from "
-        "the highest outstanding balance to the lowest."
+        "List donors who still owe money. "
+        "Results are ordered from the highest outstanding balance "
+        "to the lowest. "
+        "Use min_balance when the admin asks who owes more than "
+        "a specific amount. "
+        "Use limit for questions such as the top 5 or top 10 debtors."
     ),
 )
 def list_unpaid_donors(
     session: Session,
     limit: int = 20,
+    min_balance: int = 1,
 ) -> dict:
-    limit = min(max(limit, 1), 50)
+    limit = min(
+        max(
+            limit,
+            1,
+        ),
+        50,
+    )
+
+    min_balance = max(
+        min_balance,
+        1,
+    )
 
     donor_repository = DonorRepository(session)
+
     donor_service = _build_donor_service(session)
 
     results = []
@@ -273,7 +616,7 @@ def list_unpaid_donors(
     for donor in donor_repository.get_all():
         summary = donor_service.get_summary(donor.id)
 
-        if summary.remaining <= 0:
+        if summary.remaining < min_balance:
             continue
 
         results.append(
@@ -282,9 +625,9 @@ def list_unpaid_donors(
                 "first_name": donor.first_name,
                 "last_name": donor.last_name,
                 "email": donor.email,
-                "total_pledged": summary.total_pledged,
-                "total_paid": summary.total_paid,
-                "remaining": summary.remaining,
+                "total_pledged": (summary.total_pledged),
+                "total_paid": (summary.total_paid),
+                "remaining": (summary.remaining),
             }
         )
 
@@ -295,6 +638,7 @@ def list_unpaid_donors(
 
     return {
         "count": len(results),
+        "min_balance": min_balance,
         "donors": results[:limit],
     }
 
@@ -305,7 +649,7 @@ def list_unpaid_donors(
 
 
 @ai_tool(
-    description="Create a new donor in KehilaFlow.",
+    description=("Create a new donor in KehilaFlow."),
     write=True,
 )
 def create_donor(
@@ -402,6 +746,11 @@ def register_donation(
 
     donor_uuid = UUID(donor_id)
 
+    donor = DonorRepository(session).find_by_id(donor_uuid)
+
+    if donor is None:
+        raise ValueError("Donor not found.")
+
     campaign_uuid = UUID(campaign_id) if campaign_id else None
 
     if campaign_uuid is not None:
@@ -433,7 +782,7 @@ def register_donation(
 
 
 @ai_tool(
-    description="Create a new KehilaFlow fundraising campaign.",
+    description=("Create a new KehilaFlow fundraising campaign."),
     write=True,
 )
 def create_campaign(

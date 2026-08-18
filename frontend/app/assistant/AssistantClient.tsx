@@ -16,6 +16,8 @@ export function AssistantClient() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingActionToken, setPendingActionToken] = useState<string | null>(null);
+  const [confirmingActionId, setConfirmingActionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -34,9 +36,18 @@ export function AssistantClient() {
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
     setError(null);
+    setConfirmingActionId(null);
 
     try {
-      const response = await api.ai.chat(text);
+      // Build conversation history from current messages (most recent 20)
+      // Do NOT include the message we're currently sending
+      // Only include user/assistant role, exclude any pending action tokens
+      const history = messages.slice(-20).map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      const response = await api.ai.chat(text, history, pendingActionToken);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -45,9 +56,19 @@ export function AssistantClient() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Store or clear the pending action token
+      if (response.pending_action_token) {
+        setPendingActionToken(response.pending_action_token);
+        // Mark this assistant message as having a pending action
+        setConfirmingActionId(assistantMessage.id);
+      } else {
+        setPendingActionToken(null);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to get response from the assistant";
       setError(errorMessage);
+      setPendingActionToken(null);
     } finally {
       setLoading(false);
     }
@@ -55,6 +76,14 @@ export function AssistantClient() {
 
   const handleSuggestedQuestion = (question: string) => {
     handleSendMessage(question);
+  };
+
+  const handleConfirmAction = async () => {
+    await handleSendMessage("yes");
+  };
+
+  const handleCancelAction = async () => {
+    await handleSendMessage("no");
   };
 
   const isEmpty = messages.length === 0;
@@ -79,7 +108,7 @@ export function AssistantClient() {
                 color: "var(--accent)",
               }}
             >
-              Read-only
+              Ask and confirm actions
             </div>
           </div>
 
@@ -96,6 +125,10 @@ export function AssistantClient() {
               key={msg.id}
               role={msg.role}
               content={msg.content}
+              hasPendingAction={msg.id === confirmingActionId && pendingActionToken !== null}
+              onConfirm={handleConfirmAction}
+              onCancel={handleCancelAction}
+              isConfirmLoading={loading}
             />
           ))}
 

@@ -129,3 +129,18 @@ class ImportBatchTable(Base):
         default=datetime.utcnow,
         nullable=False,
     )
+
+
+class AIActionExecutionTable(Base):
+    __tablename__ = "ai_action_executions"
+
+    action_id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True,
+    )
+
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
